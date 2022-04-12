@@ -48,7 +48,7 @@ spec:
                 - name: clickhouse-storage-volume
                   mountPath: /var/lib/clickhouse
             - name: clickhouse-monitor
-              image: flow-visibility-clickhouse-monitor
+              image: clickhouse-monitor
               env:
                 - name: CLICKHOUSE_USERNAME
                   valueFrom:
