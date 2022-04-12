@@ -5,10 +5,12 @@ on:
     branches:
       - main
       - release-*
+      - workflow-test
   push:
     branches:
       - main
       - release-*
+      - workflow-test
 
 jobs:
   check-clickhouse-monitor-changes:
@@ -34,10 +36,10 @@ jobs:
     - name: Build clickhouse-monitor Docker image
       run: make clickhouse-monitor
     - name: Push clickhouse-monitor Docker image to registry
-      if: ${{ github.repository == 'antrea-io/theia' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      if: ${{ github.repository == 'yanjunz97/theia' && github.event_name == 'push' && github.ref == 'refs/heads/workflow-test' }}
       env:
         DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
         DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
       run: |
         echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-        docker push antrea/theia-clickhouse-monitor:latest
+        docker push aurorazhou/theia-clickhouse-monitor:latest

@@ -32,4 +32,4 @@ jobs:
       run: |
         make clickhouse-monitor
         echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-        docker push antrea/theia-clickhouse-monitor:"${VERSION}"
+        docker push aurorazhou/theia-clickhouse-monitor:"${VERSION}"
