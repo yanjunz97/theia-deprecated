@@ -1,0 +1,35 @@
+clickhouse:
+  # -- Container image to use for the ClickHouse.
+  image: 
+    repository: "projects.registry.vmware.com/antrea/flow-visibility-clickhouse-server"
+    pullPolicy: "IfNotPresent"
+    tag: "21.11"
+  # -- Container image to use for the ClickHouse Monitor.
+  monitorImage:
+    repository: "projects.registry.vmware.com/antrea/flow-visibility-clickhouse-monitor"
+    pullPolicy: "IfNotPresent"
+    tag: "latest"
+  # -- ClickHouse username. It will be stored in a secret.
+  username: "clickhouse_operator"
+  # -- ClickHouse password. It will be stored in a secret.
+  password: "clickhouse_operator_password"
+  # -- HTTP port number for the ClickHouse service.
+  httpPort: 8123
+  # -- TCP port number for the ClickHouse service.
+  tcpPort: 9000
+  # -- ClickHouse storage size.
+  storageSize: "8Gi"
+  # -- Time to live in seconds for data in the ClickHouse.
+  ttl: 3600
+grafana:
+  # -- Grafana username. It will be stored in a secret.
+  username: "admin"
+  # -- Grafana password. It will be stored in a secret.
+  password: "admin"
+  # -- Container image to use for the Grafana.
+  image: 
+    repository: "projects.registry.vmware.com/antrea/flow-visibility-grafana"
+    pullPolicy: "IfNotPresent"
+    tag: "8.3.3"
+  # -- TCP port number for the Grafana service.
+  tcpPort: 3000

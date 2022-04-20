@@ -21,15 +21,14 @@ function echoerr {
 }
 
 _usage="Usage: $0 [--mode (dev|release)] [--keep] [--help|-h]
-Generate a YAML manifest for the Clickhouse-Grafana Flow-visibility Solution, using Kustomize, and
+Generate a YAML manifest for the Clickhouse-Grafana Flow-visibility Solution, using Helm, and
 print it to stdout.
         --mode (dev|release)  Choose the configuration variant that you need (default is 'dev')
-        --keep                Debug flag which will preserve the generated kustomization.yml
 
-This tool uses kustomize (https://github.com/kubernetes-sigs/kustomize) to generate manifests for
-Clickhouse-Grafana Flow-visibility Solution. You can set the KUSTOMIZE environment variable to the
-path of the kustomize binary you want us to use. Otherwise we will look for kustomize in your PATH
-and your GOPATH. If we cannot find kustomize there, we will try to install it."
+This tool uses Helm 3 (https://helm.sh/) to generate manifests for Antrea. You can set the HELM
+environment variable to the path of the helm binary you want us to use. Otherwise we will download
+the appropriate version of the helm binary and use it (this is the recommended approach since
+different versions of helm may create different output YAMLs)."
 
 function print_usage {
     echoerr "$_usage"
@@ -40,7 +39,6 @@ function print_help {
 }
 
 MODE="dev"
-KEEP=false
 
 while [[ $# -gt 0 ]]
 do
@@ -50,10 +48,6 @@ case $key in
     --mode)
     MODE="$2"
     shift 2
-    ;;
-    --keep)
-    KEEP=true
-    shift
     ;;
     -h|--help)
     print_usage
@@ -86,46 +80,31 @@ fi
 
 THIS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
-source $THIS_DIR/verify-kustomize.sh
+# Avoid potential Helm warnings about invalid permissions for Kubeconfig file.
+# The Kubeconfig does not matter for "helm template".
+unset KUBECONFIG
 
-if [ -z "$KUSTOMIZE" ]; then
-    KUSTOMIZE="$(verify_kustomize)"
-elif ! $KUSTOMIZE version > /dev/null 2>&1; then
-    echoerr "$KUSTOMIZE does not appear to be a valid kustomize binary"
+source $THIS_DIR/verify-helm.sh
+
+if [ -z "$HELM" ]; then
+    HELM="$(verify_helm)"
+elif ! $HELM version > /dev/null 2>&1; then
+    echoerr "$HELM does not appear to be a valid helm binary"
     print_help
     exit 1
 fi
 
-KUSTOMIZATION_DIR=$THIS_DIR/../build/yamls
+TMP_DIR=$(mktemp -d $THIS_DIR/../build/yamls/chart-values.XXXXXXXX)
 
-TMP_DIR=$(mktemp -d $KUSTOMIZATION_DIR/overlays.XXXXXXXX)
-
-pushd $TMP_DIR > /dev/null
-
-BASE=../../base
-
-mkdir $MODE && cd $MODE
-touch kustomization.yml
-$KUSTOMIZE edit add base $BASE
-# ../../patches/$MODE may be empty so we use find and not simply cp
-find ../../patches/$MODE -name \*.yml -exec cp {} . \;
-
-if [ "$MODE" == "dev" ]; then
-    $KUSTOMIZE edit set image clickhouse-monitor=projects.registry.vmware.com/antrea/theia-clickhouse-monitor:latest
-    $KUSTOMIZE edit add patch --path imagePullPolicy.yml --group clickhouse.altinity.com --version v1 --kind ClickHouseInstallation --name clickhouse
-fi
-
+EXTRA_VALUES=""
 if [ "$MODE" == "release" ]; then
-    $KUSTOMIZE edit set image clickhouse-monitor=$IMG_NAME:$IMG_TAG
+    EXTRA_VALUES="--set clickhouse.monitorImage.repository=$IMG_NAME,clickhouse.monitorImage.tag=$IMG_TAG"
 fi
 
-$KUSTOMIZE build
+THEIA_CHART="$THIS_DIR/../build/charts/theia"
+$HELM template \
+      --namespace flow-visibility \
+      $EXTRA_VALUES \
+      "$THEIA_CHART"
 
-popd > /dev/null
-
-
-if $KEEP; then
-    echoerr "Kustomization file is at $TMP_DIR/$MODE/kustomization.yml"
-else
-    rm -rf $TMP_DIR
-fi
+rm -rf $TMP_DIR
