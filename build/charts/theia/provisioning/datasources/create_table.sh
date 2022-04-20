@@ -69,8 +69,8 @@ clickhouse client -n -h 127.0.0.1 <<-EOSQL
         trusted UInt8 DEFAULT 0
     ) engine=MergeTree
     ORDER BY (timeInserted, flowEndSeconds)
-    TTL timeInserted + INTERVAL 1 HOUR
-    SETTINGS merge_with_ttl_timeout = 3600;
+    TTL timeInserted + INTERVAL {{ .Values.clickhouse.ttl }} SECOND
+    SETTINGS merge_with_ttl_timeout = {{ .Values.clickhouse.ttl }};
 
     CREATE MATERIALIZED VIEW flows_pod_view
     ENGINE = SummingMergeTree
@@ -86,8 +86,8 @@ clickhouse client -n -h 127.0.0.1 <<-EOSQL
         flowType,
         sourcePodNamespace,
         destinationPodNamespace)
-    TTL timeInserted + INTERVAL 1 HOUR
-    SETTINGS merge_with_ttl_timeout = 3600
+    TTL timeInserted + INTERVAL {{ .Values.clickhouse.ttl }} SECOND
+    SETTINGS merge_with_ttl_timeout = {{ .Values.clickhouse.ttl }}
     POPULATE
     AS SELECT
         timeInserted,
@@ -132,8 +132,8 @@ clickhouse client -n -h 127.0.0.1 <<-EOSQL
         destinationNodeName,
         sourcePodNamespace,
         destinationPodNamespace)
-    TTL timeInserted + INTERVAL 1 HOUR
-    SETTINGS merge_with_ttl_timeout = 3600
+    TTL timeInserted + INTERVAL {{ .Values.clickhouse.ttl }} SECOND
+    SETTINGS merge_with_ttl_timeout = {{ .Values.clickhouse.ttl }}
     POPULATE
     AS SELECT
         timeInserted,
@@ -176,8 +176,8 @@ clickhouse client -n -h 127.0.0.1 <<-EOSQL
         ingressNetworkPolicyRuleAction,
         sourcePodNamespace,
         destinationPodNamespace)
-    TTL timeInserted + INTERVAL 1 HOUR
-    SETTINGS merge_with_ttl_timeout = 3600
+    TTL timeInserted + INTERVAL {{ .Values.clickhouse.ttl }} SECOND
+    SETTINGS merge_with_ttl_timeout = {{ .Values.clickhouse.ttl }}
     POPULATE
     AS SELECT
         timeInserted,
