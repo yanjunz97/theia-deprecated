@@ -17,7 +17,10 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,6 +51,8 @@ const (
 )
 
 var (
+	// Storage size allocated for the ClickHouse in number of byte
+	allocatedSpace uint64
 	// The name of the table to store the flow records
 	tableName = os.Getenv("TABLE_NAME")
 	// The names of the materialized views
@@ -58,8 +63,16 @@ var (
 
 func main() {
 	// Check environment variables
-	if len(tableName) == 0 || len(mvNames) == 0 {
-		klog.ErrorS(nil, "Unable to load environment variables, TABLE_NAME and MV_NAMES must be defined")
+	allocatedSpaceStr := os.Getenv("STORAGE_SIZE")
+
+	if len(tableName) == 0 || len(mvNames) == 0 || len(allocatedSpaceStr) == 0 {
+		klog.ErrorS(nil, "Unable to load environment variables, TABLE_NAME, MV_NAMES and STORAGE_SIZE must be defined")
+		return
+	}
+	var err error
+	allocatedSpace, err = parseSize(allocatedSpaceStr)
+	if err != nil {
+		klog.ErrorS(err, "Error when parsing STORAGE_SIZE")
 		return
 	}
 
@@ -68,6 +81,7 @@ func main() {
 		klog.ErrorS(err, "Error when connecting to ClickHouse")
 		os.Exit(1)
 	}
+	checkStorageCondition(connect)
 	wait.Forever(func() {
 		// The monitor stops working for several rounds after a deletion
 		// as the release of memory space by the ClickHouse MergeTree engine requires time
@@ -118,28 +132,69 @@ func connectLoop() (*sql.DB, error) {
 	return connect, nil
 }
 
-// Checks the memory usage in the ClickHouse, and deletes records when it exceeds the threshold.
-func monitorMemory(connect *sql.DB) {
+// Check if ClickHouse shares storage space with other software
+func checkStorageCondition(connect *sql.DB) {
 	var (
 		freeSpace  uint64
+		usedSpace  uint64
 		totalSpace uint64
 	)
-	// Get memory usage from ClickHouse system table
+	getDiskUsage(connect, &freeSpace, &totalSpace)
+	getClickHouseUsage(connect, &usedSpace)
+	availablePercentage := float64(freeSpace+usedSpace) / float64(totalSpace)
+	klog.InfoS("Low available percentage implies ClickHouse does not save data on a dedicated disk", "availablePercentage", availablePercentage)
+}
+
+func getDiskUsage(connect *sql.DB, freeSpace *uint64, totalSpace *uint64) {
+	// Get free space from ClickHouse system table
 	if err := wait.PollImmediate(queryRetryInterval, queryTimeout, func() (bool, error) {
-		if err := connect.QueryRow("SELECT free_space, total_space FROM system.disks").Scan(&freeSpace, &totalSpace); err != nil {
-			klog.ErrorS(err, "Failed to get memory usage for ClickHouse")
+		if err := connect.QueryRow("SELECT free_space, total_space FROM system.disks").Scan(freeSpace, totalSpace); err != nil {
+			klog.ErrorS(err, "Failed to get the disk usage")
 			return false, nil
 		} else {
 			return true, nil
 		}
 	}); err != nil {
-		klog.ErrorS(err, "Failed to get memory usage for ClickHouse", "timeout", queryTimeout)
+		klog.ErrorS(err, "Failed to get the disk usage", "timeout", queryTimeout)
 		return
+	}
+}
+
+func getClickHouseUsage(connect *sql.DB, usedSpace *uint64) {
+	// Get space usage from ClickHouse system table
+	if err := wait.PollImmediate(queryRetryInterval, queryTimeout, func() (bool, error) {
+		if err := connect.QueryRow("SELECT SUM(bytes) FROM system.parts").Scan(usedSpace); err != nil {
+			klog.ErrorS(err, "Failed to get the used space size by the ClickHouse")
+			return false, nil
+		} else {
+			return true, nil
+		}
+	}); err != nil {
+		klog.ErrorS(err, "Failed to get the used space size by the ClickHouse", "timeout", queryTimeout)
+		return
+	}
+}
+
+// Checks the memory usage in the ClickHouse, and deletes records when it exceeds the threshold.
+func monitorMemory(connect *sql.DB) {
+	var (
+		freeSpace  uint64
+		usedSpace  uint64
+		totalSpace uint64
+	)
+	getDiskUsage(connect, &freeSpace, &totalSpace)
+	getClickHouseUsage(connect, &usedSpace)
+
+	// Total space for ClickHouse is the smaller one of the user allocated space size and the actual space size on the disk
+	if (freeSpace + usedSpace) < allocatedSpace {
+		totalSpace = freeSpace + usedSpace
+	} else {
+		totalSpace = allocatedSpace
 	}
 
 	// Calculate the memory usage
-	usagePercentage := float64(totalSpace-freeSpace) / float64(totalSpace)
-	klog.InfoS("Memory usage", "total", totalSpace, "used", totalSpace-freeSpace, "percentage", usagePercentage)
+	usagePercentage := float64(usedSpace) / float64(totalSpace)
+	klog.InfoS("Memory usage", "total", totalSpace, "used", usedSpace, "percentage", usagePercentage)
 	// Delete records when memory usage is larger than threshold
 	if usagePercentage > threshold {
 		timeBoundary, err := getTimeBoundary(connect)
@@ -199,4 +254,38 @@ func getDeleteRowNum(connect *sql.DB) (uint64, error) {
 	}
 	deleteRowNum = uint64(float64(count) * deletePercentage)
 	return deleteRowNum, nil
+}
+
+// Parse human readable storage size to number in bytes
+func parseSize(sizeString string) (uint64, error) {
+	sizeMap := map[string]float64{"K": 1, "M": 2, "G": 3, "T": 4, "P": 5, "E": 6}
+	// The regex matches a fixed-point number with or without
+	// one of quantity in E(i), P(i), T(i), G(i), M(i), K(i)
+	// size (\d+(\.\d+)*)
+	// dimension ([KMGTP])
+	// unit i
+	sizeRegex := regexp.MustCompile(`^(\d+(\.\d+)*)([KMGTP])?([i])?$`)
+	matches := sizeRegex.FindStringSubmatch(sizeString)
+	if len(matches) != 5 {
+		return 0, fmt.Errorf("invalid storage size: %s", sizeString)
+	}
+	// parse the size
+	size, err := strconv.ParseFloat(matches[1], 64)
+	if err != nil {
+		return 0, fmt.Errorf("error when parsing storage size number: %v", err)
+	}
+	// parse the dimension
+	if matches[3] != "" {
+		if exponent, ok := sizeMap[matches[3]]; ok {
+			// parse the unit
+			if matches[4] == "i" {
+				size = size * math.Pow(1024, exponent)
+			} else {
+				size = size * math.Pow(1000, exponent)
+			}
+		} else {
+			return 0, fmt.Errorf("error when parsing storage size dimension: %s", matches[3])
+		}
+	}
+	return uint64(size), nil
 }

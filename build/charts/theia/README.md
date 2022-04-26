@@ -22,7 +22,14 @@ Kubernetes: `>= 1.16.0-0`
 | clickhouse.image | object | `{"pullPolicy":"IfNotPresent","repository":"projects.registry.vmware.com/antrea/flow-visibility-clickhouse-server","tag":"21.11"}` | Container image to use for the ClickHouse. |
 | clickhouse.monitorImage | object | `{"pullPolicy":"IfNotPresent","repository":"projects.registry.vmware.com/antrea/flow-visibility-clickhouse-monitor","tag":"latest"}` | Container image to use for the ClickHouse Monitor. |
 | clickhouse.password | string | `"clickhouse_operator_password"` | ClickHouse password. It will be stored in a secret. |
-| clickhouse.storageSize | string | `"8Gi"` | ClickHouse storage size. |
+| clickhouse.persistentVolume.affinity | object | `{"required":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"clickhouse/instance","operator":"In","values":["data"]}]}]}}` | Affinity for the Local Persistent Volume. Required when Persistent Volumes is enable and the provisioner is "Local". |
+| clickhouse.persistentVolume.enable | bool | `false` | Enable deploying the ClickHouse with Persistent Volumes. |
+| clickhouse.persistentVolume.localPath | string | `"/data"` | The local path. Required when Persistent Volumes is enable and the provisioner is "Local". |
+| clickhouse.persistentVolume.nfsHost | string | `""` | The NFS server hostname or IP address. Required when Persistent Volumes is enable the provisioner is "NFS". |
+| clickhouse.persistentVolume.nfsPath | string | `""` | The path exported on the NFS server. Required when Persistent Volumes is enable the provisioner is "NFS". |
+| clickhouse.persistentVolume.provisioner | string | `"Local"` | Persistent Volume Provisioner. Required if Persistent Volumes is enable. It must be one of "StorageClass", "Local", "NFS". |
+| clickhouse.persistentVolume.storageClass | string | `""` |  |
+| clickhouse.storageSize | string | `"8Gi"` | ClickHouse storage size. Can be a plain integer or as a fixed-point number using one of these quantity suffixes: E, P, T, G, M, K. Or the power-of-two equivalents: Ei, Pi, Ti, Gi, Mi, Ki. |
 | clickhouse.tcpPort | int | `9000` | TCP port number for the ClickHouse service. |
 | clickhouse.ttl | int | `3600` | Time to live in seconds for data in the ClickHouse. |
 | clickhouse.username | string | `"clickhouse_operator"` | ClickHouse username. It will be stored in a secret. |

@@ -24,6 +24,18 @@ _usage="Usage: $0 [--mode (dev|release)] [--keep] [--help|-h]
 Generate a YAML manifest for the Clickhouse-Grafana Flow-visibility Solution, using Helm, and
 print it to stdout.
         --mode (dev|release)  Choose the configuration variant that you need (default is 'dev')
+        --pv                        Deploy ClickHouse with Persistent Volume.
+        --storageclass -sc <name>   Provide the StorageClass used to dynamically provision the 
+                                    Persistent Volume for ClickHouse storage.
+        --local <path>              Create the Persistent Volume for ClickHouse with a provided
+                                    local path.
+        --nfs <hostname:path>       Create the Persistent Volume for ClickHouse with a provided
+                                    NFS server hostname or IP address and the path exported in the
+                                    form of hostname:path.
+        --size <size>               Deploy the ClickHouse with a specific storage size. Can be a 
+                                    plain integer or as a fixed-point number using one of these quantity
+                                    suffixes: E, P, T, G, M, K. Or the power-of-two equivalents:
+                                    Ei, Pi, Ti, Gi, Mi, Ki.  The default is 8Gi.
 
 This tool uses Helm 3 (https://helm.sh/) to generate manifests for Antrea. You can set the HELM
 environment variable to the path of the helm binary you want us to use. Otherwise we will download
@@ -39,6 +51,11 @@ function print_help {
 }
 
 MODE="dev"
+PV=false
+STORAGECLASS=""
+LOCALPATH=""
+NFSPATH=""
+SIZE="8Gi"
 
 while [[ $# -gt 0 ]]
 do
@@ -47,6 +64,26 @@ key="$1"
 case $key in
     --mode)
     MODE="$2"
+    shift 2
+    ;;
+    --pv)
+    PV=true
+    shift 1
+    ;;
+    -sc|--storageclass)
+    STORAGECLASS="$2"
+    shift 2
+    ;;
+    --local)
+    LOCALPATH="$2"
+    shift 2
+    ;;
+    --nfs)
+    NFSPATH="$2"
+    shift 2
+    ;;
+    --size)
+    SIZE="$2"
     shift 2
     ;;
     -h|--help)
@@ -78,6 +115,27 @@ if [ "$MODE" == "release" ] && [ -z "$IMG_TAG" ]; then
     exit 1
 fi
 
+if $PV && [ "$LOCALPATH" == "" ] && [ "$NFSPATH" == "" ] && [ "$STORAGECLASS" == "" ]; then
+    echoerr "When deploy with 'pv', one of '--local', '--nfs', '--storageclass' should be set"
+    print_help
+    exit 1
+fi
+
+if ([ "$LOCALPATH" != "" ] && [ "$NFSPATH" != "" ]) || ([ "$LOCALPATH" != "" ] && [ "$STORAGECLASS" != "" ]) || ([ "$STORAGECLASS" != "" ] && [ "$NFSPATH" != "" ]); then
+    echoerr "Cannot set '--local', '--nfs' or '--storageclass' at the same time"
+    print_help
+    exit 1
+fi
+
+if [ "$NFSPATH" != "" ]; then
+    pathPair=(${NFSPATH//:/ })
+    if [ ${#pathPair[@]} != 2 ]; then
+        echoerr "--nfs must be in the form of hostname:path"
+        print_help
+        exit 1
+    fi
+fi
+
 THIS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 # Avoid potential Helm warnings about invalid permissions for Kubeconfig file.
@@ -96,15 +154,47 @@ fi
 
 TMP_DIR=$(mktemp -d $THIS_DIR/../build/yamls/chart-values.XXXXXXXX)
 
-EXTRA_VALUES=""
+HELM_VALUES=()
+
+HELM_VALUES+=("clickhouse.storageSize=$SIZE")
+
+if [ "$PV" == true ]; then
+    HELM_VALUES+=("clickhouse.persistentVolume.enable=true")
+    if [ "$LOCALPATH" != "" ]; then
+        HELM_VALUES+=("clickhouse.persistentVolume.provisioner=Local,clickhouse.persistentVolume.localPath=$LOCALPATH")
+    elif [ "$NFSPATH" != "" ]; then
+        HELM_VALUES+=("clickhouse.persistentVolume.provisioner=NFS,clickhouse.persistentVolume.nfsHost=${pathPair[0]},clickhouse.persistentVolume.nfsPath=${pathPair[1]}")
+    elif [ "$STORAGECLASS" != "" ]; then
+        HELM_VALUES+=("clickhouse.persistentVolume.provisioner=StorageClass,clickhouse.persistentVolume.storageClass=$STORAGECLASS")
+    fi
+else
+    HELM_VALUES+=("clickhouse.persistentVolume.enable=false")
+fi
+
+if [ "$MODE" == "dev" ]; then
+    if [[ ! -z "$IMG_NAME" ]]; then
+        HELM_VALUES+=("clickhouse.monitorImage.repository=$IMG_NAME")
+    fi
+fi
+
 if [ "$MODE" == "release" ]; then
-    EXTRA_VALUES="--set clickhouse.monitorImage.repository=$IMG_NAME,clickhouse.monitorImage.tag=$IMG_TAG"
+    HELM_VALUES+=("clickhouse.monitorImage.repository=$IMG_NAME,clickhouse.monitorImage.tag=$IMG_TAG")
+fi
+
+delim=""
+HELM_VALUES_OPTION=""
+for v in "${HELM_VALUES[@]}"; do
+    HELM_VALUES_OPTION="$HELM_VALUES_OPTION$delim$v"
+    delim=","
+done
+if [ "$HELM_VALUES_OPTION" != "" ]; then
+    HELM_VALUES_OPTION="--set $HELM_VALUES_OPTION"
 fi
 
 THEIA_CHART="$THIS_DIR/../build/charts/theia"
 $HELM template \
       --namespace flow-visibility \
-      $EXTRA_VALUES \
+      $HELM_VALUES_OPTION \
       "$THEIA_CHART"
 
 rm -rf $TMP_DIR

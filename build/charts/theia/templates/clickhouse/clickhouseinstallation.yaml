@@ -19,6 +19,9 @@ spec:
     templates:
       podTemplate: pod-template
       serviceTemplate: service-template
+      {{- if .Values.clickhouse.persistentVolume.enable }}
+      dataVolumeClaimTemplate: clickhouse-storage-template
+      {{- end }}
   templates:
     serviceTemplates:
       - name: service-template
@@ -37,8 +40,10 @@ spec:
               volumeMounts:
                 - name: clickhouse-configmap-volume
                   mountPath: /docker-entrypoint-initdb.d
+                {{- if not .Values.clickhouse.persistentVolume.enable }}
                 - name: clickhouse-storage-volume
                   mountPath: /var/lib/clickhouse
+                {{- end }}
             - name: clickhouse-monitor
               image: {{ .Values.clickhouse.monitorImage.repository }}:{{ .Values.clickhouse.monitorImage.tag }}
               env:
@@ -58,12 +63,31 @@ spec:
                   value: "default.flows"
                 - name: MV_NAMES
                   value: "default.flows_pod_view default.flows_node_view default.flows_policy_view"
+                - name: STORAGE_SIZE
+                  value: {{ .Values.clickhouse.storageSize | quote }}
               imagePullPolicy: {{ .Values.clickhouse.monitorImage.pullPolicy }}
           volumes:
             - name: clickhouse-configmap-volume
               configMap:
                 name: clickhouse-mounted-configmap
+            {{- if not .Values.clickhouse.persistentVolume.enable }}
             - name: clickhouse-storage-volume
               emptyDir:
                 medium: Memory
                 sizeLimit: {{ .Values.clickhouse.storageSize }}
+            {{- end }}
+    {{- if .Values.clickhouse.persistentVolume.enable }}
+    volumeClaimTemplates: 
+      - name: clickhouse-storage-template
+        spec:
+          {{- if eq .Values.clickhouse.persistentVolume.provisioner "StorageClass"}}
+          storageClassName: {{ .Values.clickhouse.persistentVolume.storageClass}}
+          {{- else }}
+          storageClassName: clickhouse-storage
+          {{- end }}
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: {{ .Values.clickhouse.storageSize }}
+    {{- end }}

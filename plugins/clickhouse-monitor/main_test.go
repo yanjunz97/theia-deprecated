@@ -16,10 +16,13 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMonitorMemoryWithDeletion(t *testing.T) {
@@ -31,9 +34,11 @@ func TestMonitorMemoryWithDeletion(t *testing.T) {
 
 	baseTime := time.Now()
 	diskRow := sqlmock.NewRows([]string{"free_space", "total_space"}).AddRow(4, 10)
+	partsRow := sqlmock.NewRows([]string{"SUM(bytes)"}).AddRow(5)
 	countRow := sqlmock.NewRows([]string{"count"}).AddRow(10)
 	timeRow := sqlmock.NewRows([]string{"timeInserted"}).AddRow(baseTime.Add(5 * time.Second))
 	mock.ExpectQuery("SELECT free_space, total_space FROM system.disks").WillReturnRows(diskRow)
+	mock.ExpectQuery("SELECT SUM(bytes) FROM system.parts").WillReturnRows(partsRow)
 	mock.ExpectQuery("SELECT COUNT() FROM flows").WillReturnRows(countRow)
 	mock.ExpectQuery("SELECT timeInserted FROM flows LIMIT 1 OFFSET 5").WillReturnRows(timeRow)
 	for _, table := range []string{"flows", "flows_pod_view", "flows_node_view", "flows_policy_view"} {
@@ -43,6 +48,7 @@ func TestMonitorMemoryWithDeletion(t *testing.T) {
 
 	tableName = "flows"
 	mvNames = []string{"flows_pod_view", "flows_node_view", "flows_policy_view"}
+	allocatedSpace = 10
 	monitorMemory(db)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -59,11 +65,24 @@ func TestMonitorMemoryWithoutDeletion(t *testing.T) {
 	defer db.Close()
 
 	diskRow := sqlmock.NewRows([]string{"free_space", "total_space"}).AddRow(6, 10)
+	partsRow := sqlmock.NewRows([]string{"SUM(bytes)"}).AddRow(5)
 	mock.ExpectQuery("SELECT free_space, total_space FROM system.disks").WillReturnRows(diskRow)
+	mock.ExpectQuery("SELECT SUM(bytes) FROM system.parts").WillReturnRows(partsRow)
 
+	allocatedSpace = 10
 	monitorMemory(db)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("there were unfulfilled expectations: %s", err)
 	}
+}
+
+func TestParseSize(t *testing.T) {
+	size, err := parseSize("500Mi")
+	require.NoError(t, err, "Parsing size check failed")
+	assert.Equal(t, uint64(500*math.Pow(1024, 2)), size)
+
+	size, err = parseSize("2.5G")
+	require.NoError(t, err, "Parsing size check failed")
+	assert.Equal(t, uint64(2.5*math.Pow(1000, 3)), size)
 }
