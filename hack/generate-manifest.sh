@@ -80,10 +80,6 @@ fi
 
 THIS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
-# Avoid potential Helm warnings about invalid permissions for Kubeconfig file.
-# The Kubeconfig does not matter for "helm template".
-unset KUBECONFIG
-
 source $THIS_DIR/verify-helm.sh
 
 if [ -z "$HELM" ]; then
@@ -102,9 +98,12 @@ if [ "$MODE" == "release" ]; then
 fi
 
 THEIA_CHART="$THIS_DIR/../build/charts/theia"
+# Suppress potential Helm warnings about invalid permissions for Kubeconfig file
+# by throwing away related warnings.
 $HELM template \
       --namespace flow-visibility \
       $EXTRA_VALUES \
-      "$THEIA_CHART"
+      "$THEIA_CHART"\
+      2> >(grep -v 'This is insecure' >&2)
 
 rm -rf $TMP_DIR

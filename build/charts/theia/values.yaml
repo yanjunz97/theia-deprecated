@@ -17,7 +17,9 @@ clickhouse:
   httpPort: 8123
   # -- TCP port number for the ClickHouse service.
   tcpPort: 9000
-  # -- ClickHouse storage size.
+  # -- ClickHouse storage size. Can be a plain integer or as a fixed-point
+  # number using one of these quantity suffixes: E, P, T, G, M, K. Or the
+  # power-of-two equivalents: Ei, Pi, Ti, Gi, Mi, Ki.
   storageSize: "8Gi"
   # -- Time to live in seconds for data in the ClickHouse.
   ttl: 3600
