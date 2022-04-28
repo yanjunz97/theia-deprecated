@@ -30,10 +30,6 @@ import (
 )
 
 const (
-	// The storage percentage at which the monitor starts to delete old records. By default, if the storage usage is larger than 50%, it starts to delete the old records.
-	threshold = 0.5
-	// The percentage of records in ClickHouse that will be deleted when the storage grows above threshold.
-	deletePercentage = 0.5
 	// The monitor stops for 3 intervals after a deletion to wait for the ClickHouse MergeTree Engine to release memory.
 	skipRoundsNum = 3
 	// Connection to ClickHouse times out if it fails for 1 minute.
@@ -59,20 +55,36 @@ var (
 	mvNames = strings.Split(os.Getenv("MV_NAMES"), " ")
 	// The remaining number of rounds to be skipped
 	remainingRoundsNum = 0
+	// The storage percentage at which the monitor starts to delete old records.
+	threshold float64
+	// The percentage of records in ClickHouse that will be deleted when the storage grows above threshold.
+	deletePercentage float64
 )
 
 func main() {
 	// Check environment variables
 	allocatedSpaceStr := os.Getenv("STORAGE_SIZE")
+	thresholdStr := os.Getenv("THRESHOLD")
+	deletePercentageStr := os.Getenv("DELETE_PERCENTAGE")
 
-	if len(tableName) == 0 || len(mvNames) == 0 || len(allocatedSpaceStr) == 0 {
-		klog.ErrorS(nil, "Unable to load environment variables, TABLE_NAME, MV_NAMES and STORAGE_SIZE must be defined")
+	if len(tableName) == 0 || len(mvNames) == 0 || len(allocatedSpaceStr) == 0 || len(thresholdStr) == 0 || len(deletePercentageStr) == 0 {
+		klog.ErrorS(nil, "Unable to load environment variables, TABLE_NAME, MV_NAMES, STORAGE_SIZE, THRESHOLD and DELETE_PERCENTAGE must be defined")
 		return
 	}
 	var err error
 	allocatedSpace, err = parseSize(allocatedSpaceStr)
 	if err != nil {
 		klog.ErrorS(err, "Error when parsing STORAGE_SIZE")
+		return
+	}
+	threshold, err = strconv.ParseFloat(thresholdStr, 64)
+	if err != nil {
+		klog.ErrorS(err, "Error when parsing THRESHOLD")
+		return
+	}
+	deletePercentage, err = strconv.ParseFloat(deletePercentageStr, 64)
+	if err != nil {
+		klog.ErrorS(err, "Error when parsing DELETE_PERCENTAGE")
 		return
 	}
 
@@ -224,7 +236,7 @@ func getTimeBoundary(connect *sql.DB) (time.Time, error) {
 	if err != nil {
 		return timeBoundary, err
 	}
-	command := fmt.Sprintf("SELECT timeInserted FROM %s LIMIT 1 OFFSET %d", tableName, deleteRowNum)
+	command := fmt.Sprintf("SELECT timeInserted FROM %s LIMIT 1 OFFSET %d", tableName, deleteRowNum-1)
 	if err := wait.PollImmediate(queryRetryInterval, queryTimeout, func() (bool, error) {
 		if err := connect.QueryRow(command).Scan(&timeBoundary); err != nil {
 			klog.ErrorS(err, "Failed to get timeInserted boundary", "table name", tableName)

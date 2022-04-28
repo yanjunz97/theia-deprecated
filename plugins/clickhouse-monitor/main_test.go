@@ -49,6 +49,9 @@ func TestMonitorMemoryWithDeletion(t *testing.T) {
 	tableName = "flows"
 	mvNames = []string{"flows_pod_view", "flows_node_view", "flows_policy_view"}
 	allocatedSpace = 10
+	threshold = 0.5
+	deletePercentage = 0.5
+
 	monitorMemory(db)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -70,6 +73,9 @@ func TestMonitorMemoryWithoutDeletion(t *testing.T) {
 	mock.ExpectQuery("SELECT SUM(bytes) FROM system.parts").WillReturnRows(partsRow)
 
 	allocatedSpace = 10
+	threshold = 0.5
+	deletePercentage = 0.5
+
 	monitorMemory(db)
 
 	if err := mock.ExpectationsWereMet(); err != nil {

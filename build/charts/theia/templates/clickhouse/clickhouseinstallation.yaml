@@ -44,8 +44,9 @@ spec:
                 - name: clickhouse-storage-volume
                   mountPath: /var/lib/clickhouse
                 {{- end }}
+            {{- if .Values.clickhouse.monitor.enable}}
             - name: clickhouse-monitor
-              image: {{ .Values.clickhouse.monitorImage.repository }}:{{ .Values.clickhouse.monitorImage.tag }}
+              image: {{ .Values.clickhouse.monitor.image.repository }}:{{ .Values.clickhouse.monitor.image.tag }}
               env:
                 - name: CLICKHOUSE_USERNAME
                   valueFrom:
@@ -65,7 +66,12 @@ spec:
                   value: "default.flows_pod_view default.flows_node_view default.flows_policy_view"
                 - name: STORAGE_SIZE
                   value: {{ .Values.clickhouse.storageSize | quote }}
-              imagePullPolicy: {{ .Values.clickhouse.monitorImage.pullPolicy }}
+                - name: THRESHOLD
+                  value: {{ .Values.clickhouse.monitor.threshold | quote }}
+                - name: DELETE_PERCENTAGE
+                  value: {{ .Values.clickhouse.monitor.deletePercentage | quote }}
+              imagePullPolicy: {{ .Values.clickhouse.monitor.image.pullPolicy }}
+            {{- end}}
           volumes:
             - name: clickhouse-configmap-volume
               configMap:

@@ -20,7 +20,10 @@ Kubernetes: `>= 1.16.0-0`
 |-----|------|---------|-------------|
 | clickhouse.httpPort | int | `8123` | HTTP port number for the ClickHouse service. |
 | clickhouse.image | object | `{"pullPolicy":"IfNotPresent","repository":"projects.registry.vmware.com/antrea/flow-visibility-clickhouse-server","tag":"21.11"}` | Container image to use for the ClickHouse. |
-| clickhouse.monitorImage | object | `{"pullPolicy":"IfNotPresent","repository":"projects.registry.vmware.com/antrea/flow-visibility-clickhouse-monitor","tag":"latest"}` | Container image to use for the ClickHouse Monitor. |
+| clickhouse.monitor.deletePercentage | float | `0.5` | The percentage of records in ClickHouse that will be deleted when the storage grows above threshold. |
+| clickhouse.monitor.enable | bool | `true` | Determine whether to run a monitor to periodically check the ClickHouse memory usage and clean data. |
+| clickhouse.monitor.image | object | `{"pullPolicy":"IfNotPresent","repository":"projects.registry.vmware.com/antrea/flow-visibility-clickhouse-monitor","tag":"latest"}` | Container image to use for the ClickHouse Monitor. |
+| clickhouse.monitor.threshold | float | `0.5` | The storage percentage at which the monitor starts to delete old records. |
 | clickhouse.password | string | `"clickhouse_operator_password"` | ClickHouse password. It will be stored in a secret. |
 | clickhouse.persistentVolume.affinity | object | `{"required":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"clickhouse/instance","operator":"In","values":["data"]}]}]}}` | Affinity for the Local Persistent Volume. Required when Persistent Volumes is enable and the provisioner is "Local". |
 | clickhouse.persistentVolume.enable | bool | `false` | Enable deploying the ClickHouse with Persistent Volumes. |

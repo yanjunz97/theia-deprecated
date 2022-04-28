@@ -4,11 +4,21 @@ clickhouse:
     repository: "projects.registry.vmware.com/antrea/flow-visibility-clickhouse-server"
     pullPolicy: "IfNotPresent"
     tag: "21.11"
-  # -- Container image to use for the ClickHouse Monitor.
-  monitorImage:
-    repository: "projects.registry.vmware.com/antrea/flow-visibility-clickhouse-monitor"
-    pullPolicy: "IfNotPresent"
-    tag: "latest"
+  monitor:
+    # -- Determine whether to run a monitor to periodically check the ClickHouse
+    # memory usage and clean data.
+    enable: true
+    # -- The storage percentage at which the monitor starts to delete old records.
+    # Vary from 0 to 1.
+    threshold: 0.5
+    # -- The percentage of records in ClickHouse that will be deleted when the
+    # storage grows above threshold. Vary from 0 to 1.
+    deletePercentage: 0.5
+    # -- Container image to use for the ClickHouse Monitor.
+    image:
+      repository: "projects.registry.vmware.com/antrea/flow-visibility-clickhouse-monitor"
+      pullPolicy: "IfNotPresent"
+      tag: "latest"
   # -- ClickHouse username. It will be stored in a secret.
   username: "clickhouse_operator"
   # -- ClickHouse password. It will be stored in a secret.

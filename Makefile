@@ -1,3 +1,4 @@
+GO                 ?= go
 GOFLAGS            :=
 BINDIR             ?= $(CURDIR)/bin
 GO_FILES           := $(shell find . -type d -name '.cache' -prune -o -type f -name '*.go' -print)

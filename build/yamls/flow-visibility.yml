@@ -5075,7 +5075,7 @@ spec:
                 - name: clickhouse-storage-volume
                   mountPath: /var/lib/clickhouse
             - name: clickhouse-monitor
-              image: projects.registry.vmware.com/antrea/flow-visibility-clickhouse-monitor:latest
+              image: projects.registry.vmware.com/antrea/theia-clickhouse-monitor:latest
               env:
                 - name: CLICKHOUSE_USERNAME
                   valueFrom:
@@ -5095,6 +5095,10 @@ spec:
                   value: "default.flows_pod_view default.flows_node_view default.flows_policy_view"
                 - name: STORAGE_SIZE
                   value: "8Gi"
+                - name: THRESHOLD
+                  value: "0.5"
+                - name: DELETE_PERCENTAGE
+                  value: "0.5"
               imagePullPolicy: IfNotPresent
           volumes:
             - name: clickhouse-configmap-volume
